@@ -21,6 +21,7 @@ The project demonstrates core networking concepts such as socket communication, 
 ## System Architecture
 
 Client → Custom DNS Server → External DNS Server (8.8.8.8)
+
 ↑                      ↓
 ←────────── Response ──────────
 
