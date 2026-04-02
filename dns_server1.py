@@ -1,5 +1,6 @@
 import socket
 import time
+import threading   
 
 dns_table = {
     "example.com": "93.184.216.34",
@@ -14,6 +15,7 @@ dns_table = {
 cache = {}
 TTL = 60
 
+
 def extract_domain(data):
     domain = ""
     i = 12
@@ -25,6 +27,7 @@ def extract_domain(data):
         domain += data[i:i+length].decode() + "."
         i += length
     return domain[:-1]
+
 
 def build_response(data, ip):
     transaction_id = data[:2]
@@ -46,6 +49,7 @@ def build_response(data, ip):
 
     return header + query + answer
 
+
 def forward_query(data):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -56,11 +60,58 @@ def forward_query(data):
     except:
         return None
 
+
 def extract_ip(response):
     try:
         return socket.inet_ntoa(response[-4:])
     except:
         return None
+
+
+def handle_client(data, addr, server_socket):
+    try:
+        if len(data) < 12:
+            return
+
+        domain = extract_domain(data)
+        print("Query:", domain)
+
+        response = None
+
+        # Cache check
+        if domain in cache:
+            ip, timestamp = cache[domain]
+            if time.time() - timestamp < TTL:
+                print("Cache HIT")
+                response = build_response(data, ip)
+            else:
+                del cache[domain]
+
+        # Local DNS table
+        if response is None and domain in dns_table:
+            print("Resolved locally")
+            ip = dns_table[domain]
+            response = build_response(data, ip)
+
+        # Forwarding
+        if response is None:
+            print("Forwarding")
+            forwarded = forward_query(data)
+
+            if forwarded:
+                ip = extract_ip(forwarded)
+                if ip:
+                    cache[domain] = (ip, time.time())
+                    print("Stored in cache:", ip)
+                response = forwarded
+            else:
+                return
+
+        server_socket.sendto(response, addr)
+
+    except Exception as e:
+        print("Error:", e)
+
 
 def start_dns_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -72,43 +123,14 @@ def start_dns_server():
         try:
             data, addr = server_socket.recvfrom(512)
 
-            if len(data) < 12:
-                continue
-
-            domain = extract_domain(data)
-            print("Query:", domain)
-
-            response = None
-
-            if domain in cache:
-                ip, timestamp = cache[domain]
-                if time.time() - timestamp < TTL:
-                    print("Cache HIT")
-                    response = build_response(data, ip)
-                else:
-                    del cache[domain]
-
-            if response is None and domain in dns_table:
-                print("Resolved locally")
-                ip = dns_table[domain]
-                response = build_response(data, ip)
-
-            if response is None:
-                print("Forwarding")
-                forwarded = forward_query(data)
-
-                if forwarded:
-                    ip = extract_ip(forwarded)
-                    if ip:
-                        cache[domain] = (ip, time.time())
-                        print("Stored in cache:", ip)
-                    response = forwarded
-                else:
-                    continue
-
-            server_socket.sendto(response, addr)
+            thread = threading.Thread(
+                target=handle_client,
+                args=(data, addr, server_socket)
+            )
+            thread.start()
 
         except Exception as e:
             print("Error:", e)
+
 
 start_dns_server()
