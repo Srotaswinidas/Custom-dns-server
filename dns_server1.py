@@ -1,6 +1,6 @@
 import socket
 import time
-import threading   
+import threading
 
 dns_table = {
     "example.com": "93.184.216.34",
@@ -70,6 +70,8 @@ def extract_ip(response):
 
 def handle_client(data, addr, server_socket):
     try:
+        start = time.time()   # START TIMER
+
         if len(data) < 12:
             return
 
@@ -109,6 +111,9 @@ def handle_client(data, addr, server_socket):
 
         server_socket.sendto(response, addr)
 
+        end = time.time()   # END TIMER
+        print("Response Time:", round((end - start)*1000, 2), "ms\n")
+
     except Exception as e:
         print("Error:", e)
 
@@ -117,7 +122,7 @@ def start_dns_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(("0.0.0.0", 5354))
 
-    print("DNS Server running on port 5354")
+    print("DNS Server running on port 5354\n")
 
     while True:
         try:
